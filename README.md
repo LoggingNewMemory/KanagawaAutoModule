@@ -1,5 +1,6 @@
-# Templates
-Templates
+# AmbatuKAM
+
+Males nulis, nanti ya
 
 Support Me: <br />
 https://saweria.co/kanagawayamada (ID / PH) <br />
