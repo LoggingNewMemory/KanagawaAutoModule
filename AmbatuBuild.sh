@@ -1,6 +1,9 @@
 #!/bin/bash
 
-MODULES_DIR="Modules"
+# --- MODIFIED: List of modules to build ---
+MODULE_DIRS=("AmbatuKAM" "AmbatuBlow")
+# -----------------------------------------
+
 BUILD_DIR="Build"
 
 # Check if megumi.sh exists and load configuration
@@ -196,7 +199,8 @@ prompt_telegram_post() {
     fi
 }
 
-build_modules() {
+# --- MODIFIED: Main function to build all modules ---
+build_all_modules() {
     rm -rf "$BUILD_DIR"/*
 
     read -p "Enter Version (e.g., V1.0): " VERSION
@@ -210,64 +214,83 @@ build_modules() {
         echo "Invalid input. Please enter LAB or RELEASE."
     done
 
-    cd "$MODULES_DIR" || exit 1
-    MODULE_ID=$(grep "^id=" "module.prop" | cut -d'=' -f2 | tr -d '[:space:]')
+    local BUILT_ZIPS=()
+    local BUILT_MODULE_IDS=()
 
-    # Fix: Use sed without attempting to preserve permissions
-    # Create a temporary file for the sed operation
-    if [ -f "module.prop" ]; then
-        cp "module.prop" "module.prop.tmp"
-        sed "s/^version=.*$/version=$VERSION/" "module.prop.tmp" > "module.prop"
-        rm "module.prop.tmp"
+    for module_dir in "${MODULE_DIRS[@]}"; do
+        echo ""
+        echo "---------------------------------"
+        echo "Building module: $module_dir"
+        echo "---------------------------------"
+
+        if [ ! -d "$module_dir" ]; then
+            echo "✗ Warning: Directory '$module_dir' not found. Skipping."
+            continue
+        fi
+
+        cd "$module_dir" || exit 1
+        MODULE_ID=$(grep "^id=" "module.prop" | cut -d'=' -f2 | tr -d '[:space:]')
+        BUILT_MODULE_IDS+=("$MODULE_ID")
+
+        # Create temporary files for sed operations
+        if [ -f "module.prop" ]; then
+            cp "module.prop" "module.prop.tmp"
+            sed "s/^version=.*$/version=$VERSION/" "module.prop.tmp" > "module.prop"
+            rm "module.prop.tmp"
+        fi
+
+        if [ -f "customize.sh" ]; then
+            cp "customize.sh" "customize.sh.tmp"
+            sed "s/^ui_print \"Version : .*$/ui_print \"Version : $VERSION\"/" "customize.sh.tmp" > "customize.sh"
+            rm "customize.sh.tmp"
+        fi
+
+        ZIP_NAME="${MODULE_ID}-${VERSION}-${BUILD_TYPE}.zip"
+        ZIP_PATH="../$BUILD_DIR/$ZIP_NAME"
+        zip -q -r "$ZIP_PATH" ./*
+        echo "✓ Created: $ZIP_NAME"
+
+        BUILT_ZIPS+=("$ZIP_PATH")
+        cd ..
+    done
+
+    # Check if any modules were actually built
+    if [ ${#BUILT_ZIPS[@]} -eq 0 ]; then
+        echo "No modules were built. Exiting."
+        return 1
     fi
 
-    if [ -f "customize.sh" ]; then
-        cp "customize.sh" "customize.sh.tmp"
-        sed "s/^ui_print \"Version : .*$/ui_print \"Version : $VERSION\"/" "customize.sh.tmp" > "customize.sh"
-        rm "customize.sh.tmp"
-    fi
-
-    ZIP_NAME="${MODULE_ID}-${VERSION}-${BUILD_TYPE}.zip"
-    ZIP_PATH="../$BUILD_DIR/$ZIP_NAME"
-    zip -q -r "$ZIP_PATH" ./*
-    echo "Created: $ZIP_NAME"
-
-    cd ..
-
-    # Check if Telegram is enabled
+    # --- Telegram Upload Section ---
     if [ "$TELEGRAM_ENABLED" = true ]; then
-        # Prompt for Telegram posting
         if prompt_telegram_post; then
-            # Prompt for changelog
             HAS_CHANGELOG=false
             if prompt_changelog; then
                 HAS_CHANGELOG=true
             fi
 
-            # Select groups to post to
             if select_telegram_groups; then
                 echo ""
-                echo "Uploading to selected Telegram groups..."
+                echo "Preparing to upload to selected Telegram groups..."
 
                 # Create a summary message
                 SUMMARY_MESSAGE="🚀 *Yamada Module Build Complete*%0A%0A"
-                SUMMARY_MESSAGE+="📦 *Module:* $MODULE_ID%0A"
+                SUMMARY_MESSAGE+="*Modules Built:*%0A"
+                for id in "${BUILT_MODULE_IDS[@]}"; do
+                    SUMMARY_MESSAGE+="- $id%0A"
+                done
+                SUMMARY_MESSAGE+="%0A"
                 SUMMARY_MESSAGE+="🏷️ *Version:* $VERSION%0A"
                 SUMMARY_MESSAGE+="🔧 *Build Type:* $BUILD_TYPE%0A"
 
-                # Add changelog if provided
                 if [ "$HAS_CHANGELOG" = true ] && [ -n "$CHANGELOG" ]; then
-                    # URL encode the changelog for Telegram
                     ENCODED_CHANGELOG=$(echo "$CHANGELOG" | sed 's/%/%25/g; s/ /%20/g; s/!/%21/g; s/"/%22/g; s/#/%23/g; s/\$/%24/g; s/&/%26/g; s/'\''/%27/g; s/(/%28/g; s/)/%29/g; s/\*/%2A/g; s/+/%2B/g; s/,/%2C/g; s/-/%2D/g; s/\./%2E/g; s/\//%2F/g; s/:/%3A/g; s/;/%3B/g; s/</%3C/g; s/=/%3D/g; s/>/%3E/g; s/?/%3F/g; s/@/%40/g; s/\[/%5B/g; s/\\/%5C/g; s/\]/%5D/g; s/\^/%5E/g; s/_/%5F/g; s/`/%60/g; s/{/%7B/g; s/|/%7C/g; s/}/%7D/g; s/~/%7E/g')
-                    # Replace newlines with %0A for Telegram
                     ENCODED_CHANGELOG=$(echo "$ENCODED_CHANGELOG" | tr '\n' ' ' | sed 's/ /%0A/g')
                     SUMMARY_MESSAGE+=%0A%0A"📝 *Changelog:*%0A$ENCODED_CHANGELOG"
                 fi
+                SUMMARY_MESSAGE+=%0A%0A"Files uploading below... ⬇️"
 
-                SUMMARY_MESSAGE+=%0A%0A"File uploading below... ⬇️"
-
-                local upload_success=0
-                local upload_total=${#SELECTED_GROUPS[@]}
+                local total_uploads=0
+                local successful_uploads=0
 
                 # Loop through selected groups
                 for i in "${!SELECTED_GROUPS[@]}"; do
@@ -276,34 +299,30 @@ build_modules() {
 
                     echo ""
                     echo "📤 Posting to: $group_name"
-
-                    # Send summary message first
                     send_message_to_telegram "$SUMMARY_MESSAGE" "$chat_id"
 
-                    # Upload the zip file
-                    if [ -f "$BUILD_DIR/$ZIP_NAME" ]; then
-                        caption="📱 $MODULE_ID - $VERSION ($BUILD_TYPE)"
-
-                        if send_to_telegram "$BUILD_DIR/$ZIP_NAME" "$caption" "$chat_id"; then
-                            ((upload_success++))
-
-                            # Send completion message
-                            COMPLETION_MESSAGE="✅ *Upload Complete!*%0A%0AModule uploaded successfully to $group_name."
-                            send_message_to_telegram "$COMPLETION_MESSAGE" "$chat_id"
+                    # Loop through the built zip files and upload each one
+                    for zip_file_path in "${BUILT_ZIPS[@]}"; do
+                        if [ -f "$zip_file_path" ]; then
+                            local module_name=$(basename "$zip_file_path" | cut -d'-' -f1)
+                            caption="📱 $module_name - $VERSION ($BUILD_TYPE)"
+                            
+                            ((total_uploads++))
+                            if send_to_telegram "$zip_file_path" "$caption" "$chat_id"; then
+                                ((successful_uploads++))
+                            fi
                         else
-                            # Send failure message
-                            FAILURE_MESSAGE="❌ *Upload Failed*%0A%0AThere was an issue uploading the module to $group_name."
-                            send_message_to_telegram "$FAILURE_MESSAGE" "$chat_id"
+                            echo "Error: ZIP file not found at $zip_file_path"
                         fi
-                    else
-                        echo "Error: ZIP file not found at $BUILD_DIR/$ZIP_NAME"
-                    fi
+                    done
+                    
+                    COMPLETION_MESSAGE="✅ *Upload Session Complete for $group_name!*"
+                    send_message_to_telegram "$COMPLETION_MESSAGE" "$chat_id"
                 done
 
                 echo ""
                 echo "📊 Upload Summary:"
-                echo "✅ Successful: $upload_success/$upload_total groups"
-                echo "❌ Failed: $((upload_total - upload_success))/$upload_total groups"
+                echo "✅ Successfully uploaded $successful_uploads out of $total_uploads total files."
 
             else
                 echo "Telegram upload cancelled."
@@ -317,7 +336,9 @@ build_modules() {
     fi
 }
 
+
+# --- Main execution ---
 welcome
 SECONDS=0  # Start timing
-build_modules
+build_all_modules # Use the new function
 success
