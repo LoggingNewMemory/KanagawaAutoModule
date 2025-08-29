@@ -1,34 +1,25 @@
 #!/system/bin/sh
 #
-# Universal Multi-Module Installer
+# KernelSU Multi-Module Installer
 #
-# This script will install all Magisk/KernelSU modules located in the 'Modules'
-# directory of this zip file. It automatically detects the current root
-# solution (Magisk, KernelSU Next, SukiSU) and uses the appropriate
-# command-line installer.
+# This script will install all KernelSU modules located in the 'Modules'
+# directory of this zip file.
 #
 
-# The Magisk module installer script sources this file, providing the following
+# The installer script sources this file, providing the following
 # variables and functions:
 #
 # Variables:
-# - MAGISK_VER (string): The version string of the installed Magisk.
-# - MAGISK_VER_CODE (int): The version code of the installed Magisk.
-# - BOOTMODE (bool): true if the module is being installed in the Magisk app.
 # - MODPATH (path): The path where your module files should be installed.
 # - TMPDIR (path): A temporary directory for your files.
 # - ZIPFILE (path): The path to your module's installation zip.
-# - ARCH (string): The device's CPU architecture.
-# - IS64BIT (bool): true if the architecture is 64-bit.
-# - API (int): The Android API level of the device.
 #
 # Functions:
 # - ui_print <msg>: Prints a message to the console.
 # - abort <msg>: Aborts the installation with an error message.
 #
 
-# It's good practice to set this, so the module installer script doesn't
-# try to extract the main module files. We handle everything ourselves.
+# We handle all file operations ourselves.
 SKIPUNZIP=1
 
 # Define a temporary directory for our operations to keep things clean.
@@ -36,25 +27,16 @@ INSTALL_DIR="/data/local/tmp/multi_installer"
 
 ui_print " "
 ui_print "**********************************************"
-ui_print "* Universal Multi-Module Installer      *"
+ui_print "* KernelSU Multi-Module Installer         *"
 ui_print "**********************************************"
 ui_print " "
 
-# --- Step 1: Detect the active root solution ---
-ROOT_SOLUTION="unknown"
-ui_print "- Detecting root solution..."
-if command -v magisk >/dev/null 2>&1; then
-  # Magisk provides the 'magisk' command.
-  ROOT_SOLUTION="magisk"
-  ui_print "  > Magisk detected."
-elif command -v ksud >/dev/null 2>&1; then
-  ROOT_SOLUTION="kernelsu_next"
-  ui_print "  > KernelSU Next detected."
-elif command -v sukisud >/dev/null 2>&1; then # Assumption for SukiSU
-  ROOT_SOLUTION="sukisu"
-  ui_print "  > SukiSU detected."
+# --- Step 1: Verify KernelSU is the active root solution ---
+ui_print "- Verifying KernelSU installation..."
+if ! command -v ksud >/dev/null 2>&1; then
+  abort "! KernelSU not found. This installer is for KernelSU only."
 else
-  abort "! No supported root solution (Magisk, KernelSU Next, SukiSU) found. Aborting."
+  ui_print "  > KernelSU detected."
 fi
 ui_print " "
 
@@ -89,23 +71,9 @@ for module_zip in "$MODULES_DIR"/*.zip; do
   ui_print " "
   ui_print "▶ Installing: $MODULE_NAME"
 
-  case $ROOT_SOLUTION in
-    "magisk")
-      # Use Magisk's command-line module installer.
-      magisk --install-module "$module_zip"
-      ;;
-    "kernelsu_next")
-      # Use the ksud command as specified.
-      su -c ksud module install "$module_zip"
-      ;;
-    "sukisu")
-      # Assuming SukiSU uses a similar command structure to KernelSU.
-      su -c sukisud module install "$module_zip"
-      ;;
-  esac
-
-  # It's difficult to robustly check for installation success from the CLI output,
-  # but we can at least confirm the command was attempted.
+  # Use the ksud command to install the module.
+  su -c "ksud module install '$module_zip'"
+  
   ui_print "✔ Attempted installation for $MODULE_NAME"
 done
 
