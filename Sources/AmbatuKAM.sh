@@ -1,7 +1,31 @@
 #!/system/bin/sh
 
+# --- Root Access Check ---
+# Abort if the script is not run as root
+if [ "$(id -u)" -ne 0 ]; then
+  echo "❌ This script requires root access. Please run it with 'su'."
+  exit 1
+fi
+
 # The directory where your .zip module files are stored.
 MODULES_DIR="Modules"
+
+# --- Root Manager Detection ---
+echo "🔎 Detecting root manager..."
+if command -v magisk >/dev/null 2>&1; then
+  ROOT_MANAGER_NAME="Magisk Based"
+  ROOT_TOOL="magisk"
+elif command -v ksud >/dev/null 2>&1; then
+  ROOT_MANAGER_NAME="KernelSU Based"
+  ROOT_TOOL="ksud"
+elif command -v apd >/dev/null 2>&1; then
+  ROOT_MANAGER_NAME="APatch"
+  ROOT_TOOL="apd"
+else
+  echo "❌ Error: No supported root manager found (Magisk, KernelSU, or APatch)."
+  exit 1
+fi
+echo "✅ Detected: $ROOT_MANAGER_NAME"
 
 # --- Script Start ---
 
@@ -18,7 +42,7 @@ if ! ls "$MODULES_DIR"/*.zip >/dev/null 2>&1; then
     exit 0
 fi
 
-echo "🚀 Starting KernelSU module installation..."
+echo "\n🚀 Starting $ROOT_MANAGER_NAME module installation..."
 echo "----------------------------------------"
 
 # Loop through each .zip file in the directory.
@@ -26,8 +50,9 @@ for module in "$MODULES_DIR"/*.zip; do
   if [ -f "$module" ]; then
     echo "Installing: $(basename "$module")"
     
-    # Run the installation command with root privileges.
-    su -c "ksud module install '$module'"
+    # Run the installation command for the detected root manager.
+    # The script is already root, but su -c ensures the command runs in the correct context.
+    su -c "$ROOT_TOOL module install '$module'"
     
     echo "----------------------------------------"
   fi
@@ -47,7 +72,7 @@ while true; do
   
   if echo "$EVENT" | grep -q "KEY_VOLUMEUP.*DOWN"; then
     echo "Rebooting now... 👋"
-    su -c "reboot"
+    reboot
     break
   elif echo "$EVENT" | grep -q "KEY_VOLUMEDOWN.*DOWN"; then
     echo "Rebooting later. Exiting script. 👍"

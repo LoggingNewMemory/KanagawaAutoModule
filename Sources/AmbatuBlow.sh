@@ -10,6 +10,23 @@ if [ "$(id -u)" -ne 0 ]; then
   exit 1
 fi
 
+# --- Root Manager Detection ---
+echo "🔎 Detecting root manager..."
+if command -v magisk >/dev/null 2>&1; then
+  ROOT_MANAGER_NAME="Magisk Based"
+  ROOT_TOOL="magisk"
+elif command -v ksud >/dev/null 2>&1; then
+  ROOT_MANAGER_NAME="KernelSU Based"
+  ROOT_TOOL="ksud"
+elif command -v apd >/dev/null 2>&1; then
+  ROOT_MANAGER_NAME="APatch"
+  ROOT_TOOL="apd"
+else
+  echo "❌ Error: No supported root manager found (Magisk, KernelSU, or APatch)."
+  exit 1
+fi
+echo "✅ Detected: $ROOT_MANAGER_NAME"
+
 # --- Module Discovery ---
 # Check if the modules directory exists
 if [ ! -d "$MODULE_DIR" ]; then
@@ -75,11 +92,11 @@ USER_CHOICE=$(get_key)
 
 # --- Uninstallation Process ---
 if [ "$USER_CHOICE" = "UP" ]; then
-  echo "\n✅ Volume UP detected. Starting uninstallation process..."
+  echo "\n✅ Volume UP detected. Starting uninstallation process via $ROOT_MANAGER_NAME..."
   for id in $MODULE_IDS; do
     echo "Uninstalling module: $id"
-    # Use the 'ksud' command and redirect its output to /dev/null
-    ksud module uninstall "$id" > /dev/null 2>&1
+    # Use the command for the detected root manager and redirect its output
+    $ROOT_TOOL module uninstall "$id" > /dev/null 2>&1
   done
   
   echo "\n✅ All modules have been uninstalled."
