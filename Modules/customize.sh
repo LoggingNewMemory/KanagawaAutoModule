@@ -1,134 +1,123 @@
-##########################################################################################
+#!/system/bin/sh
 #
-# Universal Module Installer Script v2.3
+# Universal Multi-Module Installer
 #
-# This script properly installs modules by calling the native command-line
-# installer for the detected root solution (Magisk, KernelSU, etc.). This ensures
-# modules are correctly "registered" and persist after a reboot.
+# This script will install all Magisk/KernelSU modules located in the 'Modules'
+# directory of this zip file. It automatically detects the current root
+# solution (Magisk, KernelSU Next, SukiSU) and uses the appropriate
+# command-line installer.
 #
-##########################################################################################
 
-# The installer script will extract our module's files to $MODPATH.
-# The zip files we want to install will be in "$MODPATH/Modules".
-MODULES_TO_INSTALL_DIR="$MODPATH/Modules"
+# The Magisk module installer script sources this file, providing the following
+# variables and functions:
+#
+# Variables:
+# - MAGISK_VER (string): The version string of the installed Magisk.
+# - MAGISK_VER_CODE (int): The version code of the installed Magisk.
+# - BOOTMODE (bool): true if the module is being installed in the Magisk app.
+# - MODPATH (path): The path where your module files should be installed.
+# - TMPDIR (path): A temporary directory for your files.
+# - ZIPFILE (path): The path to your module's installation zip.
+# - ARCH (string): The device's CPU architecture.
+# - IS64BIT (bool): true if the architecture is 64-bit.
+# - API (int): The Android API level of the device.
+#
+# Functions:
+# - ui_print <msg>: Prints a message to the console.
+# - abort <msg>: Aborts the installation with an error message.
+#
 
-##########################################################################################
-# Environment Detection & Variable Setup
-##########################################################################################
+# It's good practice to set this, so the module installer script doesn't
+# try to extract the main module files. We handle everything ourselves.
+SKIPUNZIP=1
 
-# The module installation path is standard.
-MODULES_BASE_PATH="/data/adb/modules"
+# Define a temporary directory for our operations to keep things clean.
+INSTALL_DIR="/data/local/tmp/multi_installer"
 
-# We need to find the correct BusyBox and the correct installer command.
+ui_print " "
+ui_print "**********************************************"
+ui_print "* Universal Multi-Module Installer      *"
+ui_print "**********************************************"
+ui_print " "
+
+# --- Step 1: Detect the active root solution ---
 ROOT_SOLUTION="unknown"
-BUSYBOX=""
-INSTALLER_CMD=""
-
-ui_print " "
-ui_print "🔍 Detecting root solution..."
-
-if [ -f "/data/adb/magisk/busybox" ]; then
-  ROOT_SOLUTION="Magisk"
-  BUSYBOX="/data/adb/magisk/busybox"
-  # Magisk's installer command
-  INSTALLER_CMD="magisk --install-module"
-  ui_print "- Magisk detected."
-elif [ -f "/data/adb/ksu/bin/busybox" ]; then
-  ROOT_SOLUTION="KernelSU"
-  BUSYBOX="/data/adb/ksu/bin/busybox"
-  # KernelSU's installer command (path corrected)
-  INSTALLER_CMD="/data/adb/ksu/bin/ksud module install"
-  ui_print "- KernelSU detected."
-elif [ -f "/data/adb/ap/bin/busybox" ]; then
-  ROOT_SOLUTION="APatch"
-  BUSYBOX="/data/adb/ap/bin/busybox"
-  # APatch may not have a dedicated CLI installer, add if available.
-  # We will fall back to manual installation for now.
-  ui_print "- APatch detected. (Using manual install)"
-elif [ -f "/data/adb/suki/bin/busybox" ]; then
-  ROOT_SOLUTION="SukiSU"
-  BUSYBOX="/data/adb/suki/bin/busybox"
-  # SukiSU may not have a dedicated CLI installer, add if available.
-  # We will fall back to manual installation for now.
-  ui_print "- SukiSU detected. (Using manual install)"
+ui_print "- Detecting root solution..."
+if command -v magisk >/dev/null 2>&1; then
+  # Magisk provides the 'magisk' command.
+  ROOT_SOLUTION="magisk"
+  ui_print "  > Magisk detected."
+elif command -v ksud >/dev/null 2>&1; then
+  ROOT_SOLUTION="kernelsu_next"
+  ui_print "  > KernelSU Next detected."
+elif command -v sukisud >/dev/null 2>&1; then # Assumption for SukiSU
+  ROOT_SOLUTION="sukisu"
+  ui_print "  > SukiSU detected."
 else
-  abort "❌ BusyBox binary not found for any known root solution."
+  abort "! No supported root solution (Magisk, KernelSU Next, SukiSU) found. Aborting."
 fi
-
-if [ ! -x "$BUSYBOX" ]; then
-  abort "❌ BusyBox not found or not executable at $BUSYBOX!"
-fi
-
-ui_print "  - BusyBox: $BUSYBOX"
 ui_print " "
 
-##########################################################################################
-# Main Installation Logic
-##########################################################################################
-
-ui_print "⚙️ Starting installation of bundled modules..."
-ui_print " "
-
-if [ ! -d "$MODULES_TO_INSTALL_DIR" ] || [ -z "$($BUSYBOX ls -A "$MODULES_TO_INSTALL_DIR")" ]; then
-  ui_print "🤔 No modules found in the 'Modules' directory. Nothing to do."
-  exit 0
+# --- Step 2: Prepare the installation environment ---
+ui_print "- Preparing environment..."
+# Clean up any previous installation attempts and create a fresh directory.
+rm -rf "$INSTALL_DIR"
+mkdir -p "$INSTALL_DIR"
+if [ ! -d "$INSTALL_DIR" ]; then
+  abort "! Failed to create temporary directory. Aborting."
 fi
 
-# Loop through all zip files in the 'Modules' directory
-for SUB_MODULE_ZIP in $MODULES_TO_INSTALL_DIR/*.zip; do
+# Extract the modules from this installer zip to the temporary directory.
+ui_print "- Extracting bundled modules..."
+unzip -o "$ZIPFILE" 'Modules/*' -d "$INSTALL_DIR" >/dev/null
+MODULES_DIR="$INSTALL_DIR/Modules"
 
-  if [ ! -f "$SUB_MODULE_ZIP" ]; then
-    continue
+if [ -z "$(ls -A "$MODULES_DIR"/*.zip 2>/dev/null)" ]; then
+  abort "! No module zip files found in the 'Modules' folder. Nothing to install."
+fi
+ui_print " "
+
+# --- Step 3: Loop through and install each module ---
+ui_print "--- Starting Module Installation ---"
+for module_zip in "$MODULES_DIR"/*.zip; do
+  if [ ! -f "$module_zip" ]; then
+    ui_print "! No modules found to install. Skipping."
+    break
   fi
 
-  SUB_MODULE_NAME=$($BUSYBOX basename "$SUB_MODULE_ZIP")
-  ui_print "********************************************************"
-  ui_print "Installing: $SUB_MODULE_NAME"
-  ui_print "********************************************************"
-
-  if [ -n "$INSTALLER_CMD" ]; then
-    # METHOD 1: Use the native installer command (Preferred)
-    ui_print "- Using native installer: $ROOT_SOLUTION"
-    # Execute the command. It will handle everything.
-    $INSTALLER_CMD "$SUB_MODULE_ZIP"
-    ui_print "- ✅ Done installing $SUB_MODULE_NAME."
-  else
-    # METHOD 2: Manual installation (Fallback for APatch, etc.)
-    ui_print "- Using manual installation method..."
-    # This is the old logic, which may not persist on reboot for some root solutions.
-    SUB_TMPDIR=$($BUSYBOX mktemp -d)
-    unzip -o "$SUB_MODULE_ZIP" -d $SUB_TMPDIR >/dev/null
-    if [ ! -f "$SUB_TMPDIR/module.prop" ]; then
-      ui_print "  - ⚠️ Warning: 'module.prop' not found. Skipping."
-      $BUSYBOX rm -rf $SUB_TMPDIR
-      continue
-    fi
-    SUB_MODID=$($BUSYBOX grep '^id=' "$SUB_TMPDIR/module.prop" | $BUSYBOX cut -d'=' -f2 | $BUSYBOX tr -d '\r\n')
-    if [ -z "$SUB_MODID" ]; then
-      ui_print "  - ⚠️ Warning: Could not read 'id'. Skipping."
-      $BUSYBOX rm -rf $SUB_TMPDIR
-      continue
-    fi
-    ui_print "- Module ID: $SUB_MODID"
-    SUB_MODPATH="$MODULES_BASE_PATH/$SUB_MODID"
-    $BUSYBOX rm -rf "$SUB_MODPATH"
-    $BUSYBOX mkdir -p "$SUB_MODPATH"
-    $BUSYBOX cp -a "$SUB_TMPDIR/." "$SUB_MODPATH"
-    # Set permissions manually
-    $BUSYBOX find $SUB_MODPATH -type d -exec chmod 0755 {} \;
-    $BUSYBOX find $SUB_MODPATH -type f -exec chmod 0644 {} \;
-    $BUSYBOX chown -R 0.0 $SUB_MODPATH
-    $BUSYBOX chcon -R u:object_r:system_file:s0 $SUB_MODPATH
-    $BUSYBOX rm -rf $SUB_TMPDIR
-    ui_print "- ✅ Done installing $SUB_MODID."
-  fi
+  MODULE_NAME=$(basename "$module_zip")
   ui_print " "
+  ui_print "▶ Installing: $MODULE_NAME"
+
+  case $ROOT_SOLUTION in
+    "magisk")
+      # Use Magisk's command-line module installer.
+      magisk --install-module "$module_zip"
+      ;;
+    "kernelsu_next")
+      # Use the ksud command as specified.
+      su -c ksud module install "$module_zip"
+      ;;
+    "sukisu")
+      # Assuming SukiSU uses a similar command structure to KernelSU.
+      su -c sukisud module install "$module_zip"
+      ;;
+  esac
+
+  # It's difficult to robustly check for installation success from the CLI output,
+  # but we can at least confirm the command was attempted.
+  ui_print "✔ Attempted installation for $MODULE_NAME"
 done
 
-ui_print "🎉 All bundled modules have been processed."
+# --- Step 4: Cleanup ---
 ui_print " "
+ui_print "--- Finalizing ---"
+ui_print "- Cleaning up temporary files..."
+rm -rf "$INSTALL_DIR"
 
-# FIX: Create a skip_mount file to tell the installer that this meta-module
-# does not need to be mounted or processed further. This prevents the
-# "Failed to copy image" error on an empty module.
-touch $MODPATH/skip_mount
+ui_print " "
+ui_print "**********************************************"
+ui_print "* Installation Done             *"
+ui_print "**********************************************"
+ui_print "- Please reboot your device to apply changes."
+ui_print " "
