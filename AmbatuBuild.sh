@@ -163,8 +163,10 @@ prompt_changelog() {
 build_project() {
     rm -rf "$BUILD_DIR"/*
 
+    # Set a fixed project name
+    PROJECT_NAME="AmbatuKAM"
+
     # Get user input for naming the zip file
-    read -p "Enter the Project Name: " PROJECT_NAME
     read -p "Enter Version (e.g., V1.0): " VERSION
     while true; do
         read -p "Enter Build Type (LAB/RELEASE): " BUILD_TYPE
