@@ -34,3 +34,25 @@ for module in "$MODULES_DIR"/*.zip; do
 done
 
 echo "✅ All modules have been processed successfully!"
+echo ""
+echo "Choose an option:"
+echo "[Volume +] = Reboot Now"
+echo "[Volume -] = Reboot Later"
+echo "----------------------------------------"
+
+# Wait for user input to reboot.
+while true; do
+  # Capture a single key press event. We look for 'DOWN' state to avoid double triggers.
+  EVENT=$(getevent -lqc 1)
+  
+  if echo "$EVENT" | grep -q "KEY_VOLUMEUP.*DOWN"; then
+    echo "Rebooting now... 👋"
+    su -c "reboot"
+    break
+  elif echo "$EVENT" | grep -q "KEY_VOLUMEDOWN.*DOWN"; then
+    echo "Rebooting later. Exiting script. 👍"
+    break
+  fi
+done
+
+exit 0
