@@ -8,7 +8,7 @@ if [ "$(id -u)" -ne 0 ]; then
 fi
 
 # The directory where your .zip module files are stored.
-MODULES_DIR="Modules"
+MODULES_DIR="$(dirname "$0")/Modules"
 
 # --- Root Manager Detection ---
 echo "🔎 Detecting root manager..."
