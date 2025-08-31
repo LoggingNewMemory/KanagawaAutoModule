@@ -1,5 +1,11 @@
 #!/system/bin/sh
 
+echo "====================="
+echo "      AmbatuKAM      "
+echo "====================="
+echo " By: Kanagawa Yamada "
+echo ""
+
 # --- Root Access Check ---
 # Abort if the script is not run as root
 if [ "$(id -u)" -ne 0 ]; then
@@ -28,7 +34,6 @@ fi
 echo "✅ Detected: $ROOT_MANAGER_NAME"
 
 # --- Script Start ---
-
 # Check if the Modules directory exists.
 if [ ! -d "$MODULES_DIR" ]; then
   echo "❌ Error: Directory '$MODULES_DIR' not found!"

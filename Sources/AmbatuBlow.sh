@@ -3,6 +3,12 @@
 # Set the directory where modules are stored
 MODULE_DIR="/data/adb/modules/"
 
+echo "====================="
+echo "      AmbatuKAM      "
+echo "====================="
+echo " By: Kanagawa Yamada "
+echo ""
+
 # --- Root Access Check ---
 # Abort if the script is not run as root
 if [ "$(id -u)" -ne 0 ]; then
@@ -62,9 +68,9 @@ fi
 
 # --- User Confirmation with Volume Keys ---
 echo "‼️ WARNING: This script will uninstall the following modules:"
-echo "--------------------------------------------------------"
+echo "------------------------"
 echo "$MODULE_INFO"
-echo "\n--------------------------------------------------------"
+echo "\n----------------------"
 echo "This action cannot be undone."
 echo ""
 echo "ACTION REQUIRED:"
