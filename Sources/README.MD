@@ -3,6 +3,8 @@ How to Use?
 - AmbatuKAM.sh > to install multiple
 - AmbatuBlow.sh > to wipe all modules
 
+Exec it with MT Manager, or whatever 
+
 Support:
 - Magisk Based root (Magisk, Magisk Alpha, Kitsune Mask, etc)
 - KernelSU Based root (KernelSU, KernelSU-Next, SukiSU, etc)
